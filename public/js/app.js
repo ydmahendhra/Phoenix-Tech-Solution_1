@@ -1090,9 +1090,6 @@ async function handleDeleteProject(projectId, name) {
     showToast(err.message, 'error');
   }
 }
-    showToast(err.message, 'error');
-  }
-}
 
 // Render Reports Table (Admin)
 async function renderReportsTable() {
