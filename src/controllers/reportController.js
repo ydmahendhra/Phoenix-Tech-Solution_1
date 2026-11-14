@@ -261,7 +261,10 @@ const getAllReports = async (req, res) => {
 const getReportById = async (req, res) => {
   try {
     const { id } = req.params;
-    const report = await Report.findOne({ $or: [{ reportId: id }, { _id: id }] });
+    const query = require('mongoose').Types.ObjectId.isValid(id)
+      ? { $or: [{ reportId: id }, { _id: id }] }
+      : { reportId: id };
+    const report = await Report.findOne(query);
 
     if (!report) {
       return res.status(404).json({ success: false, message: 'Report not found.' });
@@ -303,7 +306,10 @@ const reviewReport = async (req, res) => {
       });
     }
 
-    const report = await Report.findOne({ $or: [{ reportId: id }, { _id: id }] });
+    const query = require('mongoose').Types.ObjectId.isValid(id)
+      ? { $or: [{ reportId: id }, { _id: id }] }
+      : { reportId: id };
+    const report = await Report.findOne(query);
     if (!report) {
       return res.status(404).json({ success: false, message: 'Report not found.' });
     }

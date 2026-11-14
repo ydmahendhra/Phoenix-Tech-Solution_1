@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Notification = require('../models/Notification');
 
 const getNotifications = async (req, res) => {
@@ -25,10 +26,10 @@ const getNotifications = async (req, res) => {
 const markAsRead = async (req, res) => {
   try {
     const { id } = req.params;
-    await Notification.findOneAndUpdate(
-      { $or: [{ notificationId: id }, { _id: id }] },
-      { isRead: true }
-    );
+    const query = mongoose.Types.ObjectId.isValid(id)
+      ? { $or: [{ notificationId: id }, { _id: id }] }
+      : { notificationId: id };
+    await Notification.findOneAndUpdate(query, { isRead: true });
     return res.status(200).json({ success: true, message: 'Notification marked as read.' });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });

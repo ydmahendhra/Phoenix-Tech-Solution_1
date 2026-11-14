@@ -1,8 +1,17 @@
+const mongoose = require('mongoose');
 const Project = require('../models/Project');
 const ProjectAssignment = require('../models/ProjectAssignment');
 const Intern = require('../models/Intern');
 const Report = require('../models/Report');
 const Notification = require('../models/Notification');
+
+// Safe query builder to prevent Mongoose CastError on custom string IDs like PTS-PRJ-001
+const getProjectQuery = (id) => {
+  if (mongoose.Types.ObjectId.isValid(id)) {
+    return { $or: [{ projectId: id }, { _id: id }] };
+  }
+  return { projectId: id };
+};
 
 // Helper to auto-generate next sequential Project ID
 const generateNextProjectId = async () => {
@@ -83,7 +92,7 @@ const getAllProjects = async (req, res) => {
       filter.$or = [{ projectName: searchRegex }, { projectId: searchRegex }, { category: searchRegex }];
     }
 
-    // If intern, only return projects assigned to them!
+    // If intern, only return projects assigned to them
     if (req.user.role === 'intern') {
       const myAssignments = await ProjectAssignment.find({
         internId: req.user.internId,
@@ -95,7 +104,6 @@ const getAllProjects = async (req, res) => {
 
     const projects = await Project.find(filter).sort({ createdAt: -1 });
 
-    // Populate team member counts and average progress
     const populated = await Promise.all(
       projects.map(async (project) => {
         const assignments = await ProjectAssignment.find({
@@ -107,7 +115,6 @@ const getAllProjects = async (req, res) => {
           'internId fullName designation profileImage department email'
         );
 
-        // Average progress from approved or submitted reports
         const reports = await Report.find({ projectId: project.projectId });
         const avgProgress =
           reports.length > 0
@@ -128,11 +135,12 @@ const getAllProjects = async (req, res) => {
   }
 };
 
-// Get Project Details by ID
+// Get Project Details by ID (Safely prevents CastError)
 const getProjectById = async (req, res) => {
   try {
     const { id } = req.params;
-    const project = await Project.findOne({ $or: [{ projectId: id }, { _id: id }] });
+    const query = getProjectQuery(id);
+    const project = await Project.findOne(query);
 
     if (!project) {
       return res.status(404).json({ success: false, message: 'Project not found.' });
@@ -184,11 +192,12 @@ const getProjectById = async (req, res) => {
   }
 };
 
-// Update Project (Admin only)
+// Update Project
 const updateProject = async (req, res) => {
   try {
     const { id } = req.params;
-    const project = await Project.findOne({ $or: [{ projectId: id }, { _id: id }] });
+    const query = getProjectQuery(id);
+    const project = await Project.findOne(query);
 
     if (!project) {
       return res.status(404).json({ success: false, message: 'Project not found.' });
@@ -230,14 +239,16 @@ const updateProject = async (req, res) => {
 const deleteProject = async (req, res) => {
   try {
     const { id } = req.params;
-    const project = await Project.findOne({ $or: [{ projectId: id }, { _id: id }] });
+    const query = getProjectQuery(id);
+    const project = await Project.findOne(query);
 
     if (!project) {
       return res.status(404).json({ success: false, message: 'Project not found.' });
     }
 
-    // Cascade delete assignments
+    // Cascade delete assignments and notifications
     await ProjectAssignment.deleteMany({ projectId: project.projectId });
+    await Report.deleteMany({ projectId: project.projectId });
     await Project.deleteOne({ _id: project._id });
 
     return res.status(200).json({

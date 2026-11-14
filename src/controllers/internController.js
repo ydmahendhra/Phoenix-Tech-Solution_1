@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const Intern = require('../models/Intern');
 const Project = require('../models/Project');
@@ -5,6 +6,14 @@ const ProjectAssignment = require('../models/ProjectAssignment');
 const Report = require('../models/Report');
 const Notification = require('../models/Notification');
 const { uploadToGridFS } = require('../services/fileService');
+
+// Safe query builder to prevent Mongoose CastError on custom string IDs like PTS-INT-001
+const getInternQuery = (id) => {
+  if (mongoose.Types.ObjectId.isValid(id)) {
+    return { $or: [{ internId: id }, { _id: id }] };
+  }
+  return { internId: id };
+};
 
 // Helper to auto-generate next sequential Intern ID: PTS-INT-001, PTS-INT-002...
 const generateNextInternId = async () => {
@@ -55,7 +64,6 @@ const createIntern = async (req, res) => {
     const cleanUsername = username.trim().toLowerCase();
     const cleanEmail = email.trim().toLowerCase();
 
-    // Check unique username or email
     const existing = await Intern.findOne({
       $or: [{ username: cleanUsername }, { email: cleanEmail }]
     });
@@ -107,7 +115,6 @@ const createIntern = async (req, res) => {
       createdBy: req.user.adminId || 'PTS-CEO-001'
     });
 
-    // Notify admins in notification feed
     await Notification.create({
       notificationId: `NOTIF-${Date.now()}`,
       recipientId: 'ADMINS',
@@ -130,23 +137,15 @@ const createIntern = async (req, res) => {
   }
 };
 
-// Get All Interns with search & filtering
+// Get All Interns
 const getAllInterns = async (req, res) => {
   try {
     const { search, designation, status, department } = req.query;
     const filter = {};
 
-    if (status) {
-      filter.accountStatus = status;
-    }
-
-    if (designation) {
-      filter.designation = designation;
-    }
-
-    if (department) {
-      filter.department = { $regex: department, $options: 'i' };
-    }
+    if (status) filter.accountStatus = status;
+    if (designation) filter.designation = designation;
+    if (department) filter.department = { $regex: department, $options: 'i' };
 
     if (search) {
       const searchRegex = new RegExp(search.trim(), 'i');
@@ -162,7 +161,6 @@ const getAllInterns = async (req, res) => {
 
     const interns = await Intern.find(filter).sort({ createdAt: -1 });
 
-    // Attach active project count & availability status
     const populated = await Promise.all(
       interns.map(async (intern) => {
         const activeAssignments = await ProjectAssignment.countDocuments({
@@ -187,18 +185,17 @@ const getAllInterns = async (req, res) => {
 const getInternById = async (req, res) => {
   try {
     const { id } = req.params;
-    const intern = await Intern.findOne({ $or: [{ internId: id }, { _id: id }] });
+    const query = getInternQuery(id);
+    const intern = await Intern.findOne(query);
 
     if (!intern) {
       return res.status(404).json({ success: false, message: 'Intern profile not found.' });
     }
 
-    // Role check: If requester is intern, ensure they are requesting themselves
     if (req.user.role === 'intern' && req.user.internId !== intern.internId) {
       return res.status(403).json({ success: false, message: 'Unauthorized profile access.' });
     }
 
-    // Fetch assigned projects
     const assignments = await ProjectAssignment.find({
       internId: intern.internId,
       assignmentStatus: 'Active'
@@ -206,7 +203,6 @@ const getInternById = async (req, res) => {
     const projectIds = assignments.map((a) => a.projectId);
     const projects = await Project.find({ projectId: { $in: projectIds } });
 
-    // Fetch reports
     const reports = await Report.find({ internId: intern.internId }).sort({ submittedAt: -1 });
 
     const internObj = intern.toJSON();
@@ -223,13 +219,13 @@ const getInternById = async (req, res) => {
 const updateIntern = async (req, res) => {
   try {
     const { id } = req.params;
-    const intern = await Intern.findOne({ $or: [{ internId: id }, { _id: id }] });
+    const query = getInternQuery(id);
+    const intern = await Intern.findOne(query);
 
     if (!intern) {
       return res.status(404).json({ success: false, message: 'Intern not found.' });
     }
 
-    // If intern role, only allow editing safe contact fields
     if (req.user.role === 'intern') {
       if (req.user.internId !== intern.internId) {
         return res.status(403).json({ success: false, message: 'Unauthorized update.' });
@@ -241,7 +237,6 @@ const updateIntern = async (req, res) => {
       return res.status(200).json({ success: true, message: 'Profile updated.', intern: intern.toJSON() });
     }
 
-    // Admin can update all fields
     const {
       fullName,
       email,
@@ -310,18 +305,19 @@ const updateIntern = async (req, res) => {
 const resetInternPassword = async (req, res) => {
   try {
     const { id } = req.params;
-    const { newPassword } = req.body;
+    const query = getInternQuery(id);
+    const intern = await Intern.findOne(query);
 
+    if (!intern) {
+      return res.status(404).json({ success: false, message: 'Intern not found.' });
+    }
+
+    const { newPassword } = req.body;
     if (!newPassword || newPassword.length < 6) {
       return res.status(400).json({
         success: false,
         message: 'New password must be at least 6 characters long.'
       });
-    }
-
-    const intern = await Intern.findOne({ $or: [{ internId: id }, { _id: id }] });
-    if (!intern) {
-      return res.status(404).json({ success: false, message: 'Intern not found.' });
     }
 
     intern.passwordHash = await bcrypt.hash(newPassword, 10);
@@ -336,34 +332,37 @@ const resetInternPassword = async (req, res) => {
   }
 };
 
-// Delete or Deactivate Intern
+// Delete Intern (Admin only)
 const deleteIntern = async (req, res) => {
   try {
     const { id } = req.params;
-    const intern = await Intern.findOne({ $or: [{ internId: id }, { _id: id }] });
+    const query = getInternQuery(id);
+    const intern = await Intern.findOne(query);
 
     if (!intern) {
       return res.status(404).json({ success: false, message: 'Intern not found.' });
     }
 
-    // Remove assignments
+    // Cascade remove assignments and reports
     await ProjectAssignment.deleteMany({ internId: intern.internId });
+    await Report.deleteMany({ internId: intern.internId });
     await Intern.deleteOne({ _id: intern._id });
 
     return res.status(200).json({
       success: true,
-      message: `Intern ${intern.fullName} (${intern.internId}) has been removed.`
+      message: `Intern ${intern.fullName} (${intern.internId}) has been permanently removed.`
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// Upload Avatar separately
+// Upload Avatar
 const uploadInternAvatar = async (req, res) => {
   try {
     const { id } = req.params;
-    const intern = await Intern.findOne({ $or: [{ internId: id }, { _id: id }] });
+    const query = getInternQuery(id);
+    const intern = await Intern.findOne(query);
 
     if (!intern) {
       return res.status(404).json({ success: false, message: 'Intern not found.' });

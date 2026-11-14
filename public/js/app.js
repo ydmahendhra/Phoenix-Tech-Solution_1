@@ -399,8 +399,10 @@ function renderDashboardActiveProjects(projects) {
                 </div>
                 <span class="text-[10px] text-slate-400 font-mono">${p.progress || 0}%</span>
               </td>
-              <td class="px-4 py-3 text-right">
-                <button onclick="viewProjectDetails('${p.projectId}')" class="text-indigo-400 hover:text-indigo-300 font-medium">View &rarr;</button>
+              <td class="px-4 py-3 text-right whitespace-nowrap">
+                <button onclick="viewProjectDetails('${p.projectId}')" class="px-2.5 py-1 text-xs rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white border border-indigo-500/30 font-medium transition inline-flex items-center gap-1">
+                  About Project &rarr;
+                </button>
               </td>
             </tr>
           `).join('')}
@@ -733,10 +735,61 @@ async function viewProjectDetails(projectId) {
       `).join('');
     }
 
+    // Modal Actions (Admin vs Intern)
+    const actionsContainer = document.getElementById('modalPrjActionsContainer');
+    if (actionsContainer) {
+      const safeProjectName = (p.projectName || '').replace(/'/g, "\\'");
+      if (appState.user && appState.user.role === 'admin') {
+        actionsContainer.innerHTML = `
+          <button onclick="handleDeleteProject('${p.projectId}', '${safeProjectName}')" class="px-3.5 py-2 rounded-lg bg-rose-500/15 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/30 text-xs font-semibold transition flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            Delete Project
+          </button>
+          <div class="flex items-center gap-2">
+            <button onclick="assignToThisProject('${p.projectId}')" class="px-3.5 py-2 rounded-lg bg-indigo-600/30 hover:bg-indigo-600 text-indigo-300 hover:text-white border border-indigo-500/40 text-xs font-semibold transition flex items-center gap-1.5">
+              + Assign Members
+            </button>
+            <button onclick="closeModal('projectDetailsModal')" class="btn-secondary px-4 py-2 rounded-lg text-xs font-medium">Close</button>
+          </div>
+        `;
+      } else {
+        actionsContainer.innerHTML = `
+          <button onclick="internSubmitForProject('${p.projectId}')" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-lg shadow-indigo-600/30">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+            Submit Weekly Report
+          </button>
+          <button onclick="closeModal('projectDetailsModal')" class="btn-secondary px-4 py-2 rounded-lg text-xs font-medium">Close</button>
+        `;
+      }
+    }
+
     openModal('projectDetailsModal');
   } catch (err) {
     showToast(err.message, 'error');
   }
+}
+
+function assignToThisProject(projectId) {
+  closeModal('projectDetailsModal');
+  switchAdminTab('assign');
+  setTimeout(() => {
+    const select = document.getElementById('assignProjectSelect');
+    if (select) {
+      select.value = projectId;
+      select.dispatchEvent(new Event('change'));
+    }
+  }, 100);
+}
+
+function internSubmitForProject(projectId) {
+  closeModal('projectDetailsModal');
+  switchInternTab('submit_report');
+  setTimeout(() => {
+    const select = document.getElementById('submitReportProjectSelect');
+    if (select) {
+      select.value = projectId;
+    }
+  }, 150);
 }
 
 // Remove Team Member
@@ -892,9 +945,15 @@ async function renderInternsTable() {
             ${i.availabilityStatus} (${i.activeProjectsCount})
           </span>
         </td>
-        <td class="px-4 py-3.5 text-right space-x-2">
-          <button onclick="openResetPasswordModal('${i.internId}', '${i.fullName}')" class="text-amber-400 hover:text-amber-300 text-xs font-medium">Reset Pwd</button>
-          <button onclick="handleDeleteIntern('${i.internId}', '${i.fullName}')" class="text-rose-400 hover:text-rose-300 text-xs font-medium">Delete</button>
+        <td class="px-4 py-3.5 text-right space-x-2 whitespace-nowrap">
+          <button onclick="openResetPasswordModal('${i.internId}', '${(i.fullName || '').replace(/'/g, "\\'")}')" class="px-2.5 py-1 text-xs rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 font-medium transition inline-flex items-center gap-1">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+            Reset Pwd
+          </button>
+          <button onclick="handleDeleteIntern('${i.internId}', '${(i.fullName || '').replace(/'/g, "\\'")}')" class="px-2.5 py-1 text-xs rounded-lg bg-rose-500/15 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/30 font-semibold transition inline-flex items-center gap-1">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            Delete
+          </button>
         </td>
       </tr>
     `).join('');
@@ -930,10 +989,10 @@ async function handleResetPasswordSubmit(e) {
 
 // Delete Intern
 async function handleDeleteIntern(internId, name) {
-  if (!confirm(`Are you sure you want to permanently delete intern ${name} (${internId})? All project assignments will be released.`)) return;
+  if (!confirm(`Are you sure you want to permanently delete intern "${name}" (${internId})?\n\nThis will remove the intern account, release all their project assignments, and purge their submission records.`)) return;
   try {
     const res = await apiCall(`/interns/${internId}`, { method: 'DELETE' });
-    showToast(res.message, 'success');
+    showToast(res.message || 'Intern deleted successfully.', 'success');
     renderInternsTable();
     fetchAdminOverview();
   } catch (err) {
@@ -960,8 +1019,10 @@ async function renderProjectsGrid() {
       return;
     }
 
-    container.innerHTML = projects.map(p => `
-      <div class="glass-card rounded-xl p-5 border border-slate-800 flex flex-col justify-between">
+    container.innerHTML = projects.map(p => {
+      const safeProjectName = (p.projectName || '').replace(/'/g, "\\'");
+      return `
+      <div class="glass-card rounded-xl p-5 border border-slate-800 flex flex-col justify-between hover:border-slate-700/80 transition shadow-lg">
         <div>
           <div class="flex items-start justify-between gap-3">
             <div>
@@ -973,15 +1034,15 @@ async function renderProjectsGrid() {
             </span>
           </div>
 
-          <p class="text-xs text-slate-400 mt-2.5 line-clamp-2">${p.description || 'No description provided.'}</p>
+          <p class="text-xs text-slate-400 mt-2.5 line-clamp-2 leading-relaxed">${p.description || 'No description provided.'}</p>
 
           <div class="mt-4 pt-3 border-t border-slate-800/80 grid grid-cols-2 gap-2 text-xs">
             <div>
-              <span class="text-[10px] text-slate-500 block uppercase">Category</span>
+              <span class="text-[10px] text-slate-500 block uppercase font-semibold">Category</span>
               <span class="font-medium text-slate-300">${p.category}</span>
             </div>
             <div>
-              <span class="text-[10px] text-slate-500 block uppercase">Deadline</span>
+              <span class="text-[10px] text-slate-500 block uppercase font-semibold">Deadline</span>
               <span class="font-medium text-slate-300">${p.deadline ? new Date(p.deadline).toLocaleDateString() : 'N/A'}</span>
             </div>
           </div>
@@ -990,34 +1051,45 @@ async function renderProjectsGrid() {
         <div class="mt-5 pt-3 border-t border-slate-800/80 flex items-center justify-between">
           <div class="flex items-center -space-x-1.5">
             ${(p.teamMembers || []).slice(0, 3).map(m => `
-              <div class="w-6 h-6 rounded-full bg-indigo-600 border border-slate-900 flex items-center justify-center text-[10px] font-bold text-white" title="${m.fullName}">
+              <div class="w-6 h-6 rounded-full bg-indigo-600 border border-slate-900 flex items-center justify-center text-[10px] font-bold text-white shadow" title="${m.fullName}">
                 ${m.fullName.charAt(0)}
               </div>
             `).join('')}
-            ${(p.teamMembers || []).length > 3 ? `<span class="text-[10px] text-slate-400 pl-2">+${p.teamMembers.length - 3}</span>` : ''}
+            ${(p.teamMembers || []).length > 3 ? `<span class="text-[10px] text-slate-400 pl-2 font-medium">+${p.teamMembers.length - 3}</span>` : ''}
             ${(p.teamMembers || []).length === 0 ? `<span class="text-[11px] text-amber-400">Unassigned</span>` : ''}
           </div>
 
           <div class="flex items-center gap-2">
-            <button onclick="viewProjectDetails('${p.projectId}')" class="px-2.5 py-1 text-xs rounded bg-slate-800 hover:bg-slate-700 text-slate-200">Details</button>
-            <button onclick="handleDeleteProject('${p.projectId}', '${p.projectName}')" class="px-2 py-1 text-xs rounded text-rose-400 hover:bg-rose-950/40">&times;</button>
+            <button onclick="viewProjectDetails('${p.projectId}')" class="px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white border border-indigo-500/30 text-xs font-semibold transition flex items-center gap-1.5 shadow-sm">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+              About Project
+            </button>
+            <button onclick="handleDeleteProject('${p.projectId}', '${safeProjectName}')" class="px-2.5 py-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/30 text-xs font-semibold transition flex items-center gap-1" title="Delete Project">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+              Delete
+            </button>
           </div>
         </div>
       </div>
-    `).join('');
+    `;
+    }).join('');
   } catch (err) {
     showToast(err.message, 'error');
   }
 }
 
 async function handleDeleteProject(projectId, name) {
-  if (!confirm(`Are you sure you want to delete project "${name}" (${projectId})?`)) return;
+  if (!confirm(`Are you sure you want to permanently delete project "${name}" (${projectId})?\n\nThis will remove the project, unassign all team members, and delete all associated reports.`)) return;
   try {
     const res = await apiCall(`/projects/${projectId}`, { method: 'DELETE' });
-    showToast(res.message, 'success');
+    showToast(res.message || 'Project deleted successfully.', 'success');
+    closeModal('projectDetailsModal');
     renderProjectsGrid();
     fetchAdminOverview();
   } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
     showToast(err.message, 'error');
   }
 }
@@ -1176,8 +1248,11 @@ async function renderInternDashboard() {
             <p class="text-xs text-slate-400 mt-1 line-clamp-2">${p.description || 'No description provided.'}</p>
           </div>
           <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between">
-            <div class="text-[11px] text-slate-400">Deadline: <span class="text-slate-200">${p.deadline ? new Date(p.deadline).toLocaleDateString() : 'N/A'}</span></div>
-            <button onclick="viewProjectDetails('${p.projectId}')" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-medium">View Project</button>
+            <div class="text-[11px] text-slate-400">Deadline: <span class="text-slate-200 font-medium">${p.deadline ? new Date(p.deadline).toLocaleDateString() : 'N/A'}</span></div>
+            <button onclick="viewProjectDetails('${p.projectId}')" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-indigo-600/30 transition">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+              About Project
+            </button>
           </div>
         </div>
       `).join('');

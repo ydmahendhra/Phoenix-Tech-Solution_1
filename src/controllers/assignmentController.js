@@ -141,9 +141,10 @@ const getAllAssignments = async (req, res) => {
 const removeAssignment = async (req, res) => {
   try {
     const { id } = req.params;
-    const assignment = await ProjectAssignment.findOne({
-      $or: [{ assignmentId: id }, { _id: id }]
-    });
+    const query = require('mongoose').Types.ObjectId.isValid(id)
+      ? { $or: [{ assignmentId: id }, { _id: id }] }
+      : { assignmentId: id };
+    const assignment = await ProjectAssignment.findOne(query);
 
     if (!assignment) {
       return res.status(404).json({ success: false, message: 'Assignment record not found.' });
