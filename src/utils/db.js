@@ -2,14 +2,23 @@ const mongoose = require('mongoose');
 const { GridFSBucket } = require('mongodb');
 
 let gridFSBucket;
+let isConnected = false;
 
 const connectDB = async () => {
+  if (isConnected && mongoose.connection.readyState === 1) {
+    return mongoose.connection;
+  }
+
+  const uri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/phoenix_tech_solutions';
+
   try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI, {
-      serverSelectionTimeoutMS: 5000
+    const conn = await mongoose.connect(uri, {
+      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 10000
     });
 
-    console.log(`[MongoDB] Connected successfully to host: ${conn.connection.host}, database: ${conn.connection.name}`);
+    isConnected = true;
+    console.log(`[MongoDB] Connected to host: ${conn.connection.host}`);
 
     gridFSBucket = new GridFSBucket(conn.connection.db, {
       bucketName: 'uploads'
@@ -18,12 +27,19 @@ const connectDB = async () => {
     return conn;
   } catch (error) {
     console.error(`[MongoDB] Connection error: ${error.message}`);
-    process.exit(1);
+    // Do NOT call process.exit(1) in serverless environments (it kills Vercel lambda)
+    throw error;
   }
 };
 
 const getGridFSBucket = () => {
   if (!gridFSBucket) {
+    if (mongoose.connection && mongoose.connection.db) {
+      gridFSBucket = new GridFSBucket(mongoose.connection.db, {
+        bucketName: 'uploads'
+      });
+      return gridFSBucket;
+    }
     throw new Error('GridFSBucket is not initialized. Ensure DB is connected.');
   }
   return gridFSBucket;

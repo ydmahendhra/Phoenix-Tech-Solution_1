@@ -20,29 +20,54 @@ const fileRoutes = require('./routes/fileRoutes');
 
 const app = express();
 
-// Ensure DB is connected for serverless environments
-let dbInitialized = false;
-app.use(async (req, res, next) => {
-  if (!dbInitialized) {
-    try {
-      await connectDB();
-      await seedAndVerifyAuthorizedAdmins(false);
-      dbInitialized = true;
-    } catch (err) {
-      console.error('Database connection error in request middleware:', err);
-    }
-  }
-  next();
-});
-
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 app.use(morgan('dev'));
 
-// Static files
+// Static files (for local express runs)
 app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// Database middleware for API routes
+let dbInitialized = false;
+app.use(async (req, res, next) => {
+  if (req.path.startsWith('/api') && req.path !== '/api/health') {
+    try {
+      await connectDB();
+      if (!dbInitialized) {
+        await seedAndVerifyAuthorizedAdmins(false);
+        dbInitialized = true;
+      }
+    } catch (err) {
+      console.error('[DB Middleware Error]:', err.message);
+      return res.status(503).json({
+        success: false,
+        message: 'Database connection failed. Please configure MONGODB_URI in Vercel Project Settings > Environment Variables.',
+        details: err.message
+      });
+    }
+  }
+  next();
+});
+
+// Health check endpoint
+app.get('/api/health', async (req, res) => {
+  let dbStatus = 'DISCONNECTED';
+  try {
+    await connectDB();
+    dbStatus = 'CONNECTED';
+  } catch (e) {
+    dbStatus = `ERROR: ${e.message}`;
+  }
+
+  res.status(200).json({
+    status: 'ONLINE',
+    system: 'Phoenix Tech Solutions Enterprise Management System',
+    database: dbStatus,
+    timestamp: new Date().toISOString()
+  });
+});
 
 // Register API Routes
 app.use('/api/auth', authRoutes);
@@ -55,18 +80,14 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/files', fileRoutes);
 
-// Health Check
-app.get('/api/health', (req, res) => {
-  res.status(200).json({
-    status: 'ONLINE',
-    system: 'Phoenix Tech Solutions Enterprise Management System',
-    timestamp: new Date().toISOString()
-  });
-});
-
-// SPA fallback
+// Fallback to index.html for client-side routing
 app.use((req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
+  const indexPath = path.join(__dirname, '..', 'public', 'index.html');
+  res.sendFile(indexPath, (err) => {
+    if (err) {
+      res.status(404).send('Not Found');
+    }
+  });
 });
 
 module.exports = app;
